@@ -419,7 +419,7 @@ clean_qp:
 	ibv_destroy_qp(ctx->qp);
 
 clean_cq:
-	ibv_destroy_cq(pp_cq(ctx));
+	ibv_destroy_cq(ctx->cq_s.cq);
 
 clean_mr:
 	ibv_dereg_mr(ctx->mr);
@@ -454,7 +454,7 @@ static int pp_close_ctx(struct pingpong_context *ctx)
 		return 1;
 	}
 
-	if (ibv_destroy_cq(pp_cq(ctx))) {
+	if (ibv_destroy_cq(ctx->cq_s.cq)) {
 		fprintf(stderr, "Couldn't destroy CQ\n");
 		return 1;
 	}
@@ -830,7 +830,7 @@ int main(int argc, char *argv[])
         struct ibv_wc wc[2];
 
         do {
-            ne = ibv_poll_cq(pp_cq(ctx), 2, wc);
+            ne = ibv_poll_cq(ctx->cq_s.cq, 2, wc);
             if (ne < 0) {
                 fprintf(stderr, "poll CQ failed %d\n", ne);
                 return 1;
@@ -873,7 +873,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	ibv_ack_cq_events(pp_cq(ctx), num_cq_events);
+	ibv_ack_cq_events(ctx->cq_s.cq, num_cq_events);
 
 	if (pp_close_ctx(ctx))
 		return 1;
