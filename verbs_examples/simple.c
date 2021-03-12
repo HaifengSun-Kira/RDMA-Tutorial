@@ -810,10 +810,6 @@ int main(int argc, char *argv[])
 	ctx->pending = PINGPONG_RECV_WRID;
 
 	if (servername) {
-		if (validate_buf)
-			for (int i = 0; i < size; i += page_size)
-				ctx->buf[i] = i / page_size % sizeof(char);
-
 		if (pp_post_send(ctx)) {
 			fprintf(stderr, "Couldn't post send\n");
 			return 1;
