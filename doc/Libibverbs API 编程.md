@@ -189,7 +189,6 @@ struct xchg_qp_info {
 	int lid; // local id
 	int qpn; // qp number
 	int psn;  // packet sequence number; optional
-	union ibv_gid gid;  // optional
 };
 ```
 

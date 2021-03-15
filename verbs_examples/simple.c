@@ -324,7 +324,7 @@ static struct pingpong_context *pp_init_ctx(struct ibv_device *ib_dev, int size,
 	ctx->pd = ibv_alloc_pd(ctx->context);
 	if (!ctx->pd) {
 		fprintf(stderr, "Couldn't allocate PD\n");
-		goto clean_comp_channel;
+		goto clean_pd;
 	}
 
 	/* Step 4 register memory region */
@@ -416,10 +416,6 @@ clean_dm:
 clean_pd:
 	ibv_dealloc_pd(ctx->pd);
 
-clean_comp_channel:
-	if (ctx->channel)
-		ibv_destroy_comp_channel(ctx->channel);
-
 clean_device:
 	ibv_close_device(ctx->context);
 
@@ -459,13 +455,6 @@ static int pp_close_ctx(struct pingpong_context *ctx)
 	if (ibv_dealloc_pd(ctx->pd)) {
 		fprintf(stderr, "Couldn't deallocate PD\n");
 		return 1;
-	}
-
-	if (ctx->channel) {
-		if (ibv_destroy_comp_channel(ctx->channel)) {
-			fprintf(stderr, "Couldn't destroy completion channel\n");
-			return 1;
-		}
 	}
 
 	if (ibv_close_device(ctx->context)) {
