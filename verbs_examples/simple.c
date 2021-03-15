@@ -213,7 +213,7 @@ static struct pingpong_dest *pp_server_exch_dest(struct pingpong_context *ctx,
 		.ai_socktype = SOCK_STREAM
 	};
 	char *service;
-	char msg[sizeof "0000:000000:000000:00000000000000000000000000000000"];
+	char msg[sizeof "0000:000000:000000"];
 	int n;
 	int sockfd = -1, connfd;
 	struct pingpong_dest *rem_dest = NULL;
