@@ -29,7 +29,7 @@
 
 ### 传输模式 (QP类型)
 
-![image-20210310153648766](/Users/kira/PKU/RDMA/RDMA-Tutorial/imgs/image-20210310153648766.png)
+![image-20210310153648766](./imgs/image-20210310153648766.png)
 
 * **RC (Reliable Connection)**
 

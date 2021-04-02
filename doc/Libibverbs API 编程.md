@@ -192,7 +192,7 @@ struct xchg_qp_info {
 };
 ```
 
-获取 lid
+获取 lid:  a **local identifier** in the subnet where the HCA is assigned to. this is assigned to each ports by the subnet manager and **unique within its subnet**. For communications over the subnet, we can use GID (Global ID), but it will not be covered in this document. 
 
 ```c
 uint16_t getLocalId(struct ibv_context* context, int ib_port) {
@@ -218,13 +218,11 @@ psn = lrand48() & 0xffffff;
 
 
 
-
+socket通信部分，此处省略
 
 
 
 2. **修改QP状态**
-
-
 
 ```c
 /*
@@ -307,31 +305,270 @@ max_rd_atomic // IBV_QP_MAX_QP_RD_ATOMIC number of outstanding RDMA reads and at
 
 
 
-
-
 ## 通信
 
 
 
+`ibv_post_send`是用于发送SR的重要接口，其中`struct ibv_send_wr`定义了SR的操作类型，我们对其中的可配置项做出了详细的说明。
+
+```c
+/*
+	Input parameters:
+	@qp - struct ibv_qp from ibv_create_qp
+	@wr - first work request (WR)
+	Output parameters:
+	@bad_wr - pointer to first rejected WR
+*/
+
+int ibv_post_send(struct ibv_qp *qp, struct ibv_send_wr *wr, struct ibv_send_wr **bad_wr)
+
+struct ibv_send_wr {
+	uint64_t		wr_id;  // Important！！！ user assigned work request ID
+	struct ibv_send_wr     *next;  // pointer to next WR, NULL if last one.
+	struct ibv_sge	       *sg_list;  // scatter/gather array for this WR
+	int			num_sge;                    // number of entries in sg_list
+	enum ibv_wr_opcode	opcode;  // IBV_WR_RDMA_WRITE
+															 // IBV_WR_RDMA_WRITE_WITH_IMM
+															 // IBV_WR_SEND
+															 // IBV_WR_SEND_WITH_IMM
+															 // IBV_WR_RDMA_READ
+															 // IBV_WR_ATOMIC_CMP_AND_SWP
+															 // IBV_WR_ATOMIC_FETCH_AND_ADD
+  
+  
+	int			send_flags;   // IBV_SEND_FENCE      set fence indicator
+											  // IBV_SEND_SIGNALED   send completion event for this WR. Only meaningful for QPs that had the sq_sig_all set to 0
+  										  // IBV_SEND_SEND_SOLICITED  set solicited event indicator
+  											// IBV_SEND_INLINE send data in sge_list as inline data.
+  
+ 
+	/* When opcode is *_WITH_IMM: Immediate data in network byte order.
+	 * When opcode is *_INV: Stores the rkey to invalidate
+	 */
+	union {
+		__be32			imm_data;        // immediate data to send in network byte order
+		uint32_t		invalidate_rkey;
+	};
+	union {
+		struct {
+			uint64_t	remote_addr;     // remote virtual address for RDMA/atomic operations
+			uint32_t	rkey;  // remote key (from ibv_reg_mr on remote) for RDMA operations.
+		} rdma;
+		struct {
+			uint64_t	remote_addr;
+			uint64_t	compare_add;  // compare value for compare and swap operation
+			uint64_t	swap;    // swap value
+			uint32_t	rkey;
+		} atomic;
+		struct {
+			struct ibv_ah  *ah;     // address handle (AH) for datagram operations
+			uint32_t	remote_qpn;   // remote QP number for datagram operations
+			uint32_t	remote_qkey;  // Qkey for datagram operations
+		} ud;
+	} wr;
+	union {
+		struct {
+			uint32_t    remote_srqn;  // shared receive queue (SRQ) number for the destination extended reliable connection (XRC). Only used for XRC operations.
+		} xrc;
+	} qp_type;
+	union {
+		struct {
+			struct ibv_mw	*mw;
+			uint32_t		rkey;
+			struct ibv_mw_bind_info	bind_info;
+		} bind_mw;
+		struct {
+			void		       *hdr;
+			uint16_t		hdr_sz;
+			uint16_t		mss;
+		} tso;
+	};
+};
+```
 
 
 
 
-**详细说明**
+
+1. Send and Receive Op.
 
 
 
+```c
+#define APP_SEND_WRID 101
+
+static int app_post_send(struct app_context *ctx) {
+	struct ibv_sge list = {
+		.addr	= (uintptr_t) ctx->buf,
+		.length = ctx->size,
+		.lkey	= ctx->mr->lkey
+	};
+	struct ibv_send_wr wr = {
+		.wr_id	    = APP_SEND_WRID,
+		.sg_list    = &list,
+		.num_sge    = 1,
+		.opcode     = IBV_WR_SEND,					// Important!  set communication op. here 
+		.send_flags = IBV_SEND_SIGNALED,    // Important!  set signal & inline here
+	};
+	struct ibv_send_wr *bad_wr;
+  return ibv_post_send(ctx->qp, &wr, &bad_wr);
+}
+```
 
 
 
+```c
+#define APP_RECV_WRID 102
+
+static int app_post_recv(struct app_context *ctx, int n) {
+	struct ibv_sge list = {
+		.addr	= (uintptr_t) ctx->buf,
+		.length = ctx->size,
+		.lkey	= ctx->mr->lkey
+	};
+	struct ibv_recv_wr wr = {
+		.wr_id	    = APP_RECV_WRID,
+		.sg_list    = &list,
+		.num_sge    = 1,
+	};
+	struct ibv_recv_wr *bad_wr;
+	int i;
+
+	for (i = 0; i < n; ++i)
+		if (ibv_post_recv(ctx->qp, &wr, &bad_wr))
+			break;
+
+	return i;
+}
+```
 
 
 
-Step 6 Create a queue pair
+2. RDMA read and write Op.
+
+为了支持 RDMA的远程读写操作，**需要在交换QP信息时，同时交换MR的信息**。注意，MR在创建是需要设置对应的权限。
+
+```c
+struct ibv_mr {
+	struct ibv_context     *context;
+	struct ibv_pd	       *pd;
+	void		       *addr;    // !!!!! important, need to exchange
+	size_t			length;
+	uint32_t		handle;
+	uint32_t		lkey;
+	uint32_t		rkey;					// !!!!! important, need to exchange
+};
+
+ibv_reg_mr(pd, buffer, size, 
+           IBV_ACCESS_LOCAL_WRITE | 
+           IBV_ACCESS_REMOTE_READ | 		
+           IBV_ACCESS_REMOTE_WRITE);
+```
 
 
 
-Page 51 modify-qp
+```c
+#define APP_RDMA_READ_WRID 103
+
+static int app_post_read(struct app_context *ctx) {
+	struct ibv_sge list = {
+		.addr	= (uintptr_t) ctx->buf,
+		.length = ctx->size,
+		.lkey	= ctx->mr->lkey
+	};
+	struct ibv_send_wr wr = {
+		.wr_id	    = APP_RDMA_READ_WRID,
+		.sg_list    = &list,
+		.num_sge    = 1,
+		.opcode     = IBV_WR_RDMA_READ,		// Important!  set communication op. here 
+		.send_flags = IBV_SEND_SIGNALED,    // Important!  set signal & inline here
+    .wr.rdma.remote_addr = ctx->addr,
+    .wr.rdma.rkey = ctx->rkey
+	};
+	struct ibv_send_wr *bad_wr;
+  return ibv_post_send(ctx->qp, &wr, &bad_wr);
+}
+```
+
+
+
+```c
+#define APP_RDMA_WRITE_WRID 104
+
+static int app_post_write_unsignaled(struct app_context *ctx) {
+	struct ibv_sge list = {
+		.addr	= (uintptr_t) ctx->buf,
+		.length = ctx->size,
+		.lkey	= ctx->mr->lkey
+	};
+	struct ibv_send_wr wr = {
+		.wr_id	    = APP_RDMA_WRITE_WRID,
+		.sg_list    = &list,
+		.num_sge    = 1,
+		.opcode     = IBV_WR_RDMA_WRITE,		// Important!  set communication op. here 
+    .wr.rdma.remote_addr = ctx->addr,
+    .wr.rdma.rkey = ctx->rkey
+	};
+	struct ibv_send_wr *bad_wr;
+  return ibv_post_send(ctx->qp, &wr, &bad_wr);
+}
+```
+
+
+
+3. Poll CQ
+
+当设备完成操作后，它会创建一个对应的work completion (wc) entry插入到CQ中。
+
+基本上，我们通过轮询的方式来检查操作是否完成。
+
+注意，Polling is not the only way of work completion detection. RDMA provides a notification mechanism, however, polling usually is faster (low latency) for detection, as notification requires several context switches, process scheduling, etc.
+
+```c
+/*
+ * Input Parameters:
+ * @cq - struct ibv_cq from ibv_create_cq
+ * @num_entries - maximum number of completion queue entries (CQE) to return
+ * Output Parameters:
+ * @wc - CQE array
+ * Return value:
+ * Number of CQEs in array wc or -1 on error
+ */
+int ibv_poll_cq(struct ibv_cq *cq, int num_entries, struct ibv_wc *wc)
+```
+
+
+
+编程模型
+
+```c
+void pollCompletion(struct ibv_cq* cq) {
+  struct ibv_wc wc;
+  int result;
+
+  do {
+    // ibv_poll_cq returns the number of WCs that are newly completed,
+    // If it is 0, it means no new work completion is received.
+    // Here, the second argument specifies how many WCs the poll should check,
+    // however, giving more than 1 incurs stack smashing detection with g++8 compilation.
+    result = ibv_poll_cq(cq, 1, &wc);
+  } while (result == 0);
+
+  if (result > 0 && wc.status == ibv_wc_status::IBV_WC_SUCCESS) {
+    // success
+    for (i = 0; i < ne; ++i) {
+      ret = process_single_wc(wc[i].wr_id, wc[i].status, ... );
+      if (ret) {
+        fprintf(stderr, "parse WC failed %d\n", ne);
+        return 1;
+      }
+    }
+  } else {
+      // You can identify which WR failed with wc.wr_id.
+  	printf("Poll failed with status %s (work request ID: %llu)\n", ibv_wc_status_str(wc.status), wc.wr_id);
+  }
+}
+```
 
 
 
