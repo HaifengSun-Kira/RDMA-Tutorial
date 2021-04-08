@@ -24,7 +24,16 @@
 
 5. [RDMA paper list](./doc/paper_list.md) [TODO]
 
+6. [perftest]
 
+  ```
+  cd perftest-4.4
+  ./autogen.sh
+  ./configure
+  make clean && make V=1
+  # server (dl24)
+  ./test_case -d mlx5_1
+  ./test_case 10.0.12.24 -d mlx5_1
 
 
 
