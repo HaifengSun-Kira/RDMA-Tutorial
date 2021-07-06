@@ -1,10 +1,10 @@
 # RDMA 学习笔记
 
-1. [RDMA技术背景及原理](./doc/RDMA 技术背景及原理.md)
+1. [RDMA技术背景及原理](./doc/RDMA技术背景及原理.md)
 
 2. [RDMA关键概念](./doc/RDMA关键概念.md)
 
-3. [Libibverbs API 编程](./doc/Libibverbs API 编程.md)
+3. [Libibverbs API 编程](./doc/Libibverbs API编程.md)
 
    ```
    cd verbs_examples
@@ -20,7 +20,7 @@
    ./simple_verbs 10.0.12.24 -d mlx5_1
    ```
 
-4. [Librdmacm API 编程](./doc/Librdmacm API 编程.md) [TODO]
+4. [Librdmacm API 编程](./doc/Librdmacm API编程.md) [TODO]
 
 5. [RDMA paper list](./doc/paper_list.md) [TODO]
 
