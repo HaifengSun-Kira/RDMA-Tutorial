@@ -47,7 +47,7 @@
 5. [MLNX_OFED下载链接 含文档](https://www.mellanox.com/products/infiniband-drivers/linux/mlnx_ofed) 
 6. [JVerbs](https://www.ibm.com/support/knowledgecenter/SSYKE2_7.0.0/com.ibm.java.lnx.70.doc/diag/understanding/rdma_jverbs.html)
 
-
+7. 一个很好的知乎专栏: https://www.zhihu.com/column/c_1231181516811390976
 
 RDMA在整个传输过程中涉及大量的参数选择，整个过程涉及的主要参数：
 
