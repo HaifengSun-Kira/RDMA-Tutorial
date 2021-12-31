@@ -43,7 +43,7 @@
    * RDMA Aware Networks Programming User Manual (Rev 1.7)
    * NVIDIA® MLNX_OFED Documentation (Rev 5.2-1.0.4.0)
 
-8. [RDMA样例解释](./RDMA样例解释.md)
+8. [RDMA样例解释](./doc/RDMA样例解释.md)
 
    
 
