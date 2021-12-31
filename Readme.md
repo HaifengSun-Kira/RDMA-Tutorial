@@ -4,7 +4,7 @@
 
 2. [RDMA关键概念](./doc/RDMA关键概念.md)
 
-3. [RDMA入门slide](./slide)
+3. [RDMA入门slide](./slides)
 
 4. [RDMA编程](./doc/RDMA编程.md)
 
